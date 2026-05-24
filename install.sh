@@ -109,11 +109,10 @@ build_app() {
   npx prisma generate
   npx prisma db push
   npm run build
-  rm -rf node_modules
+  # Keep production deps at repo root; `next start` is more reliable than
+  # standalone on small VPS (avoids incomplete traced node_modules).
   npm ci --omit=dev
   npx prisma generate
-  cp -r .next/static .next/standalone/.next/static
-  cp -r public .next/standalone/public
   journalctl --vacuum-size=80M 2>/dev/null || true
   apt-get clean 2>/dev/null || true
 }
@@ -128,12 +127,12 @@ Wants=docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=${INSTALL_DIR}/.next/standalone
+WorkingDirectory=${INSTALL_DIR}
 EnvironmentFile=${INSTALL_DIR}/.env
 Environment=HOSTNAME=0.0.0.0
 Environment=PORT=${APP_PORT}
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/npm run start --silent
 Restart=on-failure
 RestartSec=5
 

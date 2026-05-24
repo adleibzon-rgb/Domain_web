@@ -2,7 +2,7 @@
 # Domain Scanner — one-command uninstall
 set -euo pipefail
 
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain_web}"
+INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
 SERVICE_NAME="domain-scanner"
 NGINX_SITE="domain-scanner"
 LEGACY_SERVICE="geoexport-site"
@@ -25,6 +25,13 @@ stop_docker() {
       docker-compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
     fi
   fi
+}
+
+stop_app() {
+  systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
+  systemctl disable "${SERVICE_NAME}.service" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  systemctl daemon-reload
 }
 
 stop_legacy() {
@@ -51,6 +58,7 @@ remove_files() {
 }
 
 need_root
+stop_app
 stop_docker
 stop_legacy
 remove_nginx
