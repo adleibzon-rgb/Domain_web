@@ -1,46 +1,33 @@
 #!/usr/bin/env bash
-# Domain Scanner — one-command install (Ubuntu/Debian VPS)
+# GeoExport site — one-command install (Ubuntu/Debian VPS)
 set -euo pipefail
 
-REPO_URL="${DOMAIN_SCANNER_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
-BRANCH="${DOMAIN_SCANNER_BRANCH:-main}"
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain_web}"
-SERVICE_NAME="domain-scanner"
-NGINX_SITE="domain-scanner"
-APP_PORT="${DOMAIN_SCANNER_PORT:-3000}"
+REPO_URL="${GEOEXPORT_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
+BRANCH="${GEOEXPORT_BRANCH:-main}"
+INSTALL_DIR="${GEOEXPORT_INSTALL_DIR:-/opt/domain_web}"
+SITE_DIR="${INSTALL_DIR}/site"
+SERVICE_NAME="geoexport-site"
+NGINX_SITE="geoexport-site"
+NODE_PORT="${GEOEXPORT_PORT:-4173}"
 
 export DEBIAN_FRONTEND=noninteractive
 
-log() { echo "[domain-scanner-install] $*"; }
+log() { echo "[geoexport-install] $*"; }
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Run as root: sudo bash install.sh" >&2
+    echo "Запустите от root: sudo bash install.sh" >&2
     exit 1
   fi
 }
 
 install_packages() {
-  log "Installing nginx, git, curl, docker..."
+  log "Установка пакетов (nginx, git, curl, nodejs)..."
   apt-get update -qq
-  apt-get install -y -qq nginx git curl ca-certificates docker.io docker-compose >/dev/null 2>&1 || \
-    apt-get install -y -qq nginx git curl ca-certificates docker.io >/dev/null
-  if ! command -v docker-compose >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    ln -sf "$(command -v docker)" /usr/local/bin/docker-compose 2>/dev/null || true
-  fi
-  systemctl enable docker
-  systemctl start docker
-}
-
-compose_cmd() {
-  if docker compose version >/dev/null 2>&1; then
-    echo "docker compose"
-  else
-    echo "docker-compose"
-  fi
+  apt-get install -y -qq nginx git curl ca-certificates nodejs npm >/dev/null
 }
 
 clone_or_update() {
-  log "Cloning/updating ${INSTALL_DIR}..."
+  log "Клонирование/обновление репозитория в ${INSTALL_DIR}..."
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
     git -C "${INSTALL_DIR}" fetch origin "${BRANCH}"
     git -C "${INSTALL_DIR}" checkout "${BRANCH}"
@@ -49,59 +36,64 @@ clone_or_update() {
     rm -rf "${INSTALL_DIR}"
     git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
   fi
-}
-
-setup_env() {
-  log "Writing .env..."
-  if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
-    SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
-    cat >"${INSTALL_DIR}/.env" <<EOF
-NEXTAUTH_SECRET=${SECRET}
-NEXTAUTH_URL=http://$(hostname -I | awk '{print $1}')
-NEXT_PUBLIC_APP_URL=http://$(hostname -I | awk '{print $1}')
-PORT=${APP_PORT}
-EOF
+  if [[ ! -f "${SITE_DIR}/server.mjs" ]]; then
+    echo "Ошибка: не найден ${SITE_DIR}/server.mjs" >&2
+    exit 1
   fi
 }
 
-deploy_docker() {
-  log "Building and starting Docker stack..."
-  cd "${INSTALL_DIR}"
-  COMPOSE=$(compose_cmd)
-  $COMPOSE build --quiet
-  $COMPOSE up -d
-  sleep 12
-  $COMPOSE exec -T web npx prisma db push 2>/dev/null || true
+apply_patches() {
+  log "Применение патчей фронтенда (export preview/download)..."
+  node "${SITE_DIR}/patch-bundle.mjs"
+}
+
+install_systemd() {
+  log "Настройка systemd (${SERVICE_NAME})..."
+  cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+[Unit]
+Description=GeoExport static mirror (Node)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${SITE_DIR}
+Environment=PORT=${NODE_PORT}
+ExecStart=/usr/bin/node ${SITE_DIR}/server.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable "${SERVICE_NAME}.service"
+  systemctl restart "${SERVICE_NAME}.service"
 }
 
 install_nginx() {
-  log "Configuring nginx..."
+  log "Настройка nginx (${NGINX_SITE})..."
   cat >"/etc/nginx/sites-available/${NGINX_SITE}" <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-    client_max_body_size 32m;
+
+    client_max_body_size 64m;
 
     location / {
-        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_pass http://127.0.0.1:${NODE_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_read_timeout 300s;
+        proxy_connect_timeout 60s;
     }
 }
 EOF
-  rm -f /etc/nginx/sites-enabled/geoexport-site 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/geoexport-site 2>/dev/null || true
-  systemctl stop geoexport-site.service 2>/dev/null || true
-  systemctl disable geoexport-site.service 2>/dev/null || true
-  rm -f /etc/systemd/system/geoexport-site.service 2>/dev/null || true
-  systemctl daemon-reload
+  rm -f /etc/nginx/sites-enabled/domain-scanner 2>/dev/null || true
+  rm -f /etc/nginx/sites-available/domain-scanner 2>/dev/null || true
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   ln -sf "/etc/nginx/sites-available/${NGINX_SITE}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
   nginx -t
@@ -110,24 +102,27 @@ EOF
 }
 
 verify() {
-  log "Verifying..."
-  sleep 3
-  if ! curl -fsS -o /dev/null "http://127.0.0.1:${APP_PORT}/"; then
-    echo "App not responding on port ${APP_PORT}" >&2
-    $(compose_cmd) -f "${INSTALL_DIR}/docker-compose.yml" logs --tail=50 web || true
+  log "Проверка..."
+  sleep 2
+  if ! systemctl is-active --quiet "${SERVICE_NAME}.service"; then
+    systemctl status "${SERVICE_NAME}.service" --no-pager || true
     exit 1
   fi
-  TITLE=$(curl -fsS "http://127.0.0.1/" | head -c 2000 | grep -oi 'Domain Scanner' | head -1 || true)
-  if [[ -z "${TITLE}" ]]; then
-    log "Warning: page title may not include Domain Scanner yet"
+  if ! curl -fsS -o /dev/null "http://127.0.0.1:${NODE_PORT}/"; then
+    echo "Node-сервер не отвечает на порту ${NODE_PORT}" >&2
+    exit 1
   fi
-  log "Done. Open http://$(hostname -I | awk '{print $1}')/"
+  if ! curl -fsS -o /dev/null "http://127.0.0.1/"; then
+    echo "nginx не отдаёт сайт на :80" >&2
+    exit 1
+  fi
+  log "Готово. Сайт доступен по http://$(hostname -I | awk '{print $1}')/"
 }
 
 need_root
 install_packages
 clone_or_update
-setup_env
-deploy_docker
+apply_patches
+install_systemd
 install_nginx
 verify
