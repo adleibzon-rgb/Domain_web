@@ -75,10 +75,15 @@ systemctl restart geoexport-site
 - Экспорт, поиск и часть API проксируются на живой `geoexport.org` (нужен интернет на VPS).
 - Это зеркало UI и кэшированных справочников, не полный автономный бэкенд.
 
+## Premium (Next.js roadmap)
+
+Каталог `premium/` — Next.js 16 scaffold (Docker, docs, `docker-compose.yml`). Продакшен на VPS сейчас использует **статическое зеркало** в `site/` (nginx + Node). Полный Next.js-стек — по `premium/docs/DEPLOYMENT.md`.
+
 ## Структура репозитория
 
 ```
 install.sh      — установка на VPS
 uninstall.sh    — удаление с VPS
-site/           — index.html, assets/, data/, server.mjs
+site/           — index.html, assets/, data/, server.mjs (production)
+premium/        — Next.js rewrite, Docker, документация (roadmap)
 ```

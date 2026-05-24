@@ -1,2 +1,6 @@
 .DS_Store
 *.log
+premium/node_modules/
+premium/.next/
+premium/.env
+.env
