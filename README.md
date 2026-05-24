@@ -36,6 +36,10 @@ open http://localhost:3000
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Domain_web/main/install.sh | sudo bash
 ```
 
+On small VPS disks (&lt;4GB free), the install script uses a **lite path**: Postgres/Redis in Docker, Next.js built on the host. For full container deploy on larger machines: `docker compose up -d && docker compose exec web npx prisma db push`.
+
+Legacy GeoExport mirror in `site/` is **not** deployed (see `site/ARCHIVED.md`).
+
 ## Uninstall
 
 ```bash
