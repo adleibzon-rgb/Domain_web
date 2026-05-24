@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/monitoring", label: "Monitoring" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/api-docs", label: "API" },
   { href: "/settings", label: "Settings" },
 ];
