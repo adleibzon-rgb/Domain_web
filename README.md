@@ -1,89 +1,83 @@
-# Domain_web — зеркало GeoExport
+# Domain Scanner
 
-Статическая копия интерфейса [geoexport.org](https://geoexport.org/) для развёртывания на VPS (nginx + Node.js).
+Modern domain intelligence and infrastructure analysis platform with premium UX, real-time monitoring, and scalable self-hosted architecture.
 
-## Быстрая установка (одна команда)
+![Domain Scanner](https://img.shields.io/badge/Next.js-15-black?style=flat-square)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square)
+
+## Features
+
+- **DNS** — A, AAAA, CNAME, MX, TXT, NS resolution
+- **WHOIS** — Registrar and domain metadata
+- **SSL** — Certificate validity, issuer, expiry
+- **HTTP** — Status, redirects, response headers
+- **Geo/IP** — Location via ip-api.com (or IPinfo with token)
+- **Security** — Header scoring and grade
+- **Tech/CDN** — Server, Cloudflare, Vercel signals
+- **Export** — JSON and CSV downloads
+- **Live progress** — Server-Sent Events during scans
+- **Monitoring** — DB schema + API for DNS/SSL monitors (workers: roadmap)
+
+## Quick start (Docker)
+
+```bash
+git clone https://github.com/andrey271192/Domain_web.git
+cd Domain_web
+cp .env.example .env
+docker compose up -d
+docker compose exec web npx prisma db push
+open http://localhost:3000
+```
+
+## One-line VPS install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Domain_web/main/install.sh | sudo bash
 ```
 
-**URL скрипта установки:**  
-https://raw.githubusercontent.com/andrey271192/Domain_web/main/install.sh
-
-## Удаление (одна команда)
+## Uninstall
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/andrey271192/Domain_web/main/uninstall.sh | sudo bash
 ```
 
-**URL скрипта удаления:**  
-https://raw.githubusercontent.com/andrey271192/Domain_web/main/uninstall.sh
-
-## Что устанавливается
-
-| Компонент | Путь / имя |
-|-----------|------------|
-| Клон репозитория | `/opt/domain_web` |
-| Файлы сайта | `/opt/domain_web/site/` |
-| Node-сервер (API + статика) | systemd `geoexport-site`, порт `127.0.0.1:4173` |
-| Публичный доступ | nginx на порту **80** → прокси на Node |
-
-Скрипт установки:
-
-- ставит `nginx`, `git`, `curl`, `nodejs` (если нет);
-- клонирует или обновляет этот репозиторий;
-- поднимает `geoexport-site.service`;
-- настраивает nginx как reverse proxy.
-
-Скрипт удаления:
-
-- останавливает и удаляет unit `geoexport-site`;
-- убирает конфиг nginx `geoexport-site`;
-- удаляет каталог `/opt/domain_web`;
-- **не** удаляет nginx, node и остальные сервисы сервера.
-
-## Ручная установка
+## Development
 
 ```bash
-git clone https://github.com/andrey271192/Domain_web.git /opt/domain_web
-cd /opt/domain_web
-sudo bash install.sh
+npm install
+cp .env.example .env
+# Start Postgres + Redis (docker compose up postgres redis -d)
+npm run db:push
+npm run dev
 ```
 
-## Локальный запуск (без VPS)
+## Environment
 
-```bash
-cd site
-npm start
-# http://127.0.0.1:4173
-```
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis for scan cache |
+| `NEXTAUTH_SECRET` | Auth signing secret |
+| `NEXTAUTH_URL` | Public app URL |
+| `IPINFO_TOKEN` | Optional IPinfo token |
+| `SCAN_RATE_LIMIT_PER_HOUR` | Per-IP scan limit (default 30) |
 
-## Обновление данных на сервере
+## API
 
-```bash
-cd /opt/domain_web/site
-curl -fsSL https://geoexport.org/api/presets -o data/presets.json
-curl -fsSL https://geoexport.org/api/sources -o data/sources.json
-curl -fsSL https://geoexport.org/api/last-update -o data/last-update.json
-curl -fsSL https://geoexport.org/api/routing/presets -o data/routing-presets.json
-systemctl restart geoexport-site
-```
+See [docs/API.md](docs/API.md) and the in-app `/api-docs` page.
 
-## Ограничения
+## Docs
 
-- Экспорт, поиск и часть API проксируются на живой `geoexport.org` (нужен интернет на VPS).
-- Это зеркало UI и кэшированных справочников, не полный автономный бэкенд.
+- [Architecture](docs/ARCHITECTURE.md)
+- [API](docs/API.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Marketing](docs/MARKETING.md)
 
-## Premium (Next.js roadmap)
+## License
 
-Каталог `premium/` — Next.js 16 scaffold (Docker, docs, `docker-compose.yml`). Продакшен на VPS сейчас использует **статическое зеркало** в `site/` (nginx + Node). Полный Next.js-стек — по `premium/docs/DEPLOYMENT.md`.
+MIT — see [LICENSE](LICENSE)
 
-## Структура репозитория
+## Topics
 
-```
-install.sh      — установка на VPS
-uninstall.sh    — удаление с VPS
-site/           — index.html, assets/, data/, server.mjs (production)
-premium/        — Next.js rewrite, Docker, документация (roadmap)
-```
+`domain-scanner` `dns` `whois` `ssl` `networking` `cybersecurity` `nextjs` `typescript` `self-hosted` `monitoring` `analytics` `infrastructure` `devtools` `open-source` `docker` `postgresql` `redis` `webapp` `dashboard` `security`
