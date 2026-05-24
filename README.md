@@ -53,6 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/andrey271192/Domain_web/main/instal
 
 On small VPS disks (&lt;4GB free), the install script uses a **lite path**: Postgres/Redis in Docker, Next.js built on the host. For full container deploy on larger machines: `docker compose up -d && docker compose exec web npx prisma db push`.
 
+If `npm ci` / `npm run build` OOM on a ~1GB RAM VPS, build on your Mac (`npm run build`), then rsync `.next/` and `.next/standalone/` to the server and run `node .next/standalone/server.js` (systemd unit in production). Always run `npx prisma db push` on the VPS after schema changes.
+
 Legacy GeoExport mirror in `site/` is **not** deployed (see `site/ARCHIVED.md`).
 
 ## Uninstall
