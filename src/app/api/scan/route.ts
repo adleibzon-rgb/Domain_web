@@ -62,8 +62,11 @@ export async function POST(req: NextRequest) {
 
 async function runScanAsync(scanId: string, domain: string, cacheKey: string) {
   try {
-    const result = await runDomainScan(domain, async (progress) => {
-      await prisma.scan.update({ where: { id: scanId }, data: { progress } });
+    const result = await runDomainScan(domain, async (progress, stage) => {
+      await prisma.scan.update({
+        where: { id: scanId },
+        data: { progress, stage },
+      });
     });
     await prisma.scan.update({
       where: { id: scanId },

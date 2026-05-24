@@ -10,7 +10,10 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "worker:monitors": "npx tsx scripts/monitor-worker.ts",
+    "seed:admin": "npx tsx scripts/seed-admin.ts",
+    "smoke": "bash scripts/smoke-test.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -53,6 +56,7 @@
     "eslint-config-next": "^15.3.3",
     "prisma": "^6.9.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }

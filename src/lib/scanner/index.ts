@@ -193,33 +193,49 @@ function detectTech(headers: Record<string, string>): TechHint[] {
   const powered = headers["x-powered-by"]?.toLowerCase() ?? "";
   const via = headers["via"]?.toLowerCase() ?? "";
   const cf = headers["cf-ray"];
+  const allKeys = Object.keys(headers).join(" ").toLowerCase();
 
   if (cf) tech.push({ name: "Cloudflare", category: "CDN", confidence: "high" });
   if (server.includes("nginx")) tech.push({ name: "nginx", category: "Web Server", confidence: "high" });
   if (server.includes("apache")) tech.push({ name: "Apache", category: "Web Server", confidence: "high" });
   if (server.includes("cloudflare")) tech.push({ name: "Cloudflare", category: "CDN", confidence: "high" });
+  if (server.includes("caddy")) tech.push({ name: "Caddy", category: "Web Server", confidence: "high" });
+  if (server.includes("openresty")) tech.push({ name: "OpenResty", category: "Web Server", confidence: "medium" });
   if (powered.includes("next")) tech.push({ name: "Next.js", category: "Framework", confidence: "medium" });
   if (powered.includes("express")) tech.push({ name: "Express", category: "Framework", confidence: "medium" });
+  if (powered.includes("php")) tech.push({ name: "PHP", category: "Runtime", confidence: "medium" });
   if (via.includes("varnish")) tech.push({ name: "Varnish", category: "Cache", confidence: "medium" });
   if (headers["x-vercel-id"]) tech.push({ name: "Vercel", category: "Hosting", confidence: "high" });
   if (headers["x-amz-cf-id"]) tech.push({ name: "AWS CloudFront", category: "CDN", confidence: "high" });
-
-  const cdnWaf: string[] = [];
-  if (cf) cdnWaf.push("Cloudflare");
-  if (headers["x-served-by"]?.includes("fastly")) cdnWaf.push("Fastly");
-  if (headers["server"]?.includes("Akamai")) cdnWaf.push("Akamai");
+  if (headers["x-nf-request-id"]) tech.push({ name: "Netlify", category: "Hosting", confidence: "high" });
+  if (headers["x-render-origin-server"]) tech.push({ name: "Render", category: "Hosting", confidence: "high" });
+  if (headers["fly-request-id"]) tech.push({ name: "Fly.io", category: "Hosting", confidence: "high" });
+  if (headers["x-powered-by"]?.includes("WP")) tech.push({ name: "WordPress", category: "CMS", confidence: "medium" });
+  if (allKeys.includes("x-drupal")) tech.push({ name: "Drupal", category: "CMS", confidence: "low" });
 
   return tech;
 }
 
 function detectCdnWaf(headers: Record<string, string>): string[] {
-  const detected: string[] = [];
-  if (headers["cf-ray"]) detected.push("Cloudflare");
-  if (headers["x-fastly-request-id"]) detected.push("Fastly");
-  if (headers["x-akamai-transformed"]) detected.push("Akamai");
-  if (headers["x-amz-cf-id"]) detected.push("AWS CloudFront");
-  if (headers["x-sucuri-id"]) detected.push("Sucuri WAF");
-  return detected;
+  const detected = new Set<string>();
+  const server = headers["server"]?.toLowerCase() ?? "";
+  const via = headers["via"]?.toLowerCase() ?? "";
+
+  if (headers["cf-ray"] || server.includes("cloudflare")) detected.add("Cloudflare");
+  if (headers["x-fastly-request-id"] || via.includes("fastly") || headers["x-served-by"]?.includes("fastly"))
+    detected.add("Fastly");
+  if (headers["x-akamai-transformed"] || server.includes("akamai")) detected.add("Akamai");
+  if (headers["x-amz-cf-id"]) detected.add("AWS CloudFront");
+  if (headers["x-sucuri-id"]) detected.add("Sucuri WAF");
+  if (headers["x-incap-client-ip"] || headers["x-cdn"]?.includes("incapsula")) detected.add("Imperva");
+  if (headers["x-azure-ref"]) detected.add("Azure Front Door");
+  if (headers["x-goog-cache-control"] || headers["x-gfe-backend"]) detected.add("Google CDN");
+  if (headers["x-bunnycdn"]) detected.add("BunnyCDN");
+  if (headers["x-cache"]?.includes("netlify")) detected.add("Netlify Edge");
+  if (headers["server"]?.includes("ddos-guard")) detected.add("DDoS-Guard");
+  if (headers["x-fw-server"] || headers["x-served-by"]?.includes("fly")) detected.add("Fly.io Edge");
+
+  return [...detected];
 }
 
 async function geoLookup(domain: string): Promise<GeoInfo | null> {
@@ -271,12 +287,21 @@ async function geoLookup(domain: string): Promise<GeoInfo | null> {
 
 export type ScanProgressCallback = (progress: number, stage: string) => void | Promise<void>;
 
+const STAGE_LABELS: Record<string, string> = {
+  dns: "Resolving DNS",
+  whois: "WHOIS lookup",
+  ssl: "Checking SSL",
+  http: "HTTP headers",
+  geo: "Geo / IP",
+  done: "Finalizing",
+};
+
 export async function runDomainScan(
   domain: string,
   onProgress?: ScanProgressCallback
 ): Promise<ScanResult> {
   const report = async (p: number, stage: string) => {
-    await onProgress?.(p, stage);
+    await onProgress?.(p, STAGE_LABELS[stage] ?? stage);
   };
 
   await report(5, "dns");

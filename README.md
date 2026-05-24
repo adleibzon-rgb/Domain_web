@@ -17,7 +17,22 @@ Modern domain intelligence and infrastructure analysis platform with premium UX,
 - **Tech/CDN** — Server, Cloudflare, Vercel signals
 - **Export** — JSON and CSV downloads
 - **Live progress** — Server-Sent Events during scans
-- **Monitoring** — DB schema + API for DNS/SSL monitors (workers: roadmap)
+- **Monitoring** — DNS change + SSL expiry checks via background worker
+- **Analytics** — 7-day charts from scan history (Recharts)
+- **Auth** — Register / sign-in (NextAuth credentials)
+
+## Roadmap status
+
+| Area | Status |
+|------|--------|
+| Premium UI (glass, motion, dark/light) | Done |
+| Scan API + SSE progress + CDN/WAF heuristics | Done |
+| Analytics from DB | Done |
+| Monitor worker (DNS/SSL MVP) | Done |
+| Auth register + optional admin seed | Done |
+| Email/Slack alert delivery | Planned |
+| GraphQL public API | Planned |
+| Paid tiers / billing | Planned |
 
 ## Quick start (Docker)
 
@@ -66,6 +81,9 @@ npm run dev
 | `NEXTAUTH_URL` | Public app URL |
 | `IPINFO_TOKEN` | Optional IPinfo token |
 | `SCAN_RATE_LIMIT_PER_HOUR` | Per-IP scan limit (default 30) |
+| `MONITOR_INTERVAL_MS` | Monitor worker interval (default 300000) |
+| `SEED_ADMIN_EMAIL` | Optional admin email on install |
+| `SEED_ADMIN_PASSWORD` | Optional admin password on install |
 
 ## API
 

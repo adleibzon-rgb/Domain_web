@@ -18,6 +18,7 @@ export function ScanPanel() {
   const [domain, setDomain] = useState(searchParams.get("domain") ?? "");
   const [scanId, setScanId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export function ScanPanel() {
     setError(null);
     setResult(null);
     setProgress(0);
+    setStage(null);
     setStatus("starting");
 
     const res = await fetch("/api/scan", {
@@ -58,10 +60,12 @@ export function ScanPanel() {
       const msg = JSON.parse(ev.data) as {
         status: string;
         progress: number;
+        stage?: string;
         result?: ScanResult;
         error?: string;
       };
       setProgress(msg.progress ?? 0);
+      if (msg.stage) setStage(msg.stage);
       if (msg.status === "COMPLETED" && msg.result) {
         setResult(msg.result);
         setStatus("completed");
@@ -116,7 +120,10 @@ export function ScanPanel() {
 
       {status === "running" && !result && (
         <div className="space-y-4">
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+          {stage && (
+            <p className="text-sm text-zinc-500 transition-opacity">{stage}</p>
+          )}
+          <div className="h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10">
             <motion.div
               className="h-full bg-gradient-to-r from-violet-500 to-cyan-400"
               initial={{ width: 0 }}

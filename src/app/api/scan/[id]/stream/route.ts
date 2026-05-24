@@ -31,6 +31,7 @@ export async function GET(
           id: scan.id,
           status: scan.status,
           progress: scan.progress,
+          stage: scan.stage,
           domain: scan.domain,
           result: scan.status === "COMPLETED" ? scan.result : undefined,
           error: scan.error,
@@ -48,7 +49,7 @@ export async function GET(
           return;
         }
 
-        setTimeout(poll, 1000);
+        setTimeout(poll, 450);
       };
 
       await poll();

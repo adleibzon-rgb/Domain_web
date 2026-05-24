@@ -43,6 +43,7 @@ model Scan {
   domain    String
   status    ScanStatus @default(PENDING)
   progress  Int        @default(0)
+  stage     String?
   result    Json?
   error     String?
   userId    String?

@@ -36,7 +36,7 @@ body {
 }
 
 .glass {
-  @apply border border-white/10 bg-white/5 backdrop-blur-xl;
+  @apply border border-zinc-200/80 bg-white/70 backdrop-blur-xl dark:border-white/10 dark:bg-white/5;
 }
 
 .gradient-mesh {

@@ -118,6 +118,39 @@ build_app() {
   apt-get clean 2>/dev/null || true
 }
 
+install_monitor_worker() {
+  log "Installing monitor worker (${SERVICE_NAME}-worker)..."
+  cat >"/etc/systemd/system/${SERVICE_NAME}-worker.service" <<EOF
+[Unit]
+Description=Domain Scanner monitor worker
+After=network.target docker.service ${SERVICE_NAME}.service
+Wants=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=${INSTALL_DIR}
+EnvironmentFile=${INSTALL_DIR}/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run worker:monitors --silent
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable "${SERVICE_NAME}-worker.service"
+  systemctl restart "${SERVICE_NAME}-worker.service"
+}
+
+seed_admin_user() {
+  if [[ -n "${SEED_ADMIN_EMAIL:-}" && -n "${SEED_ADMIN_PASSWORD:-}" ]]; then
+    log "Seeding admin user..."
+    cd "${INSTALL_DIR}"
+    SEED_ADMIN_EMAIL="${SEED_ADMIN_EMAIL}" SEED_ADMIN_PASSWORD="${SEED_ADMIN_PASSWORD}" npm run seed:admin --silent
+  fi
+}
+
 install_systemd() {
   log "Installing systemd unit (${SERVICE_NAME})..."
   cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
@@ -143,6 +176,8 @@ EOF
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}.service"
   systemctl restart "${SERVICE_NAME}.service"
+  install_monitor_worker
+  seed_admin_user
 }
 
 install_nginx() {
