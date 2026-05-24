@@ -109,6 +109,7 @@ build_app() {
   npx prisma generate
   npx prisma db push
   npm run build
+  bash scripts/sync-standalone-assets.sh "${INSTALL_DIR}"
   # Keep production deps at repo root; `next start` is more reliable than
   # standalone on small VPS (avoids incomplete traced node_modules).
   npm ci --omit=dev
@@ -154,6 +155,13 @@ server {
 
     client_max_body_size 32m;
 
+    location /_next/static/ {
+        alias ${INSTALL_DIR}/.next/static/;
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        access_log off;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
@@ -188,6 +196,18 @@ verify() {
     echo "Health check failed on port ${APP_PORT}" >&2
     exit 1
   fi
+  local css
+  css="$(find "${INSTALL_DIR}/.next/static/css" -name '*.css' -type f 2>/dev/null | head -1 || true)"
+  if [[ -z "${css}" ]]; then
+    echo "ERROR: no CSS build output in .next/static/css" >&2
+    exit 1
+  fi
+  local css_url="/_next/static/css/$(basename "${css}")"
+  if ! curl -fsSI "http://127.0.0.1${css_url}" | grep -qi 'content-type:.*css'; then
+    echo "ERROR: CSS not served (${css_url})" >&2
+    exit 1
+  fi
+  log "CSS OK: ${css_url}"
   local title
   title="$(curl -fsS "http://127.0.0.1/" | grep -o '<title>[^<]*</title>' | head -1 || true)"
   if echo "${title}" | grep -qi geoexport; then

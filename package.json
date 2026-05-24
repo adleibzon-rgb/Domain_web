@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "postbuild": "bash scripts/sync-standalone-assets.sh",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",

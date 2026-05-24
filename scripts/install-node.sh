@@ -50,6 +50,7 @@ build_app() {
   npm ci
   npx prisma generate
   npm run build
+  bash scripts/sync-standalone-assets.sh "${INSTALL_DIR}"
   npx prisma db push --accept-data-loss
 }
 
@@ -81,6 +82,14 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
+
+    location /_next/static/ {
+        alias ${INSTALL_DIR}/.next/static/;
+        expires 1y;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        access_log off;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:${NODE_PORT};
         proxy_http_version 1.1;
