@@ -19,7 +19,11 @@ need_root() {
 stop_docker() {
   log "Stopping Docker stack..."
   if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
-    docker compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
+    if docker compose version >/dev/null 2>&1; then
+      docker compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
+    else
+      docker-compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
+    fi
   fi
 }
 

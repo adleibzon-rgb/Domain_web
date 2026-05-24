@@ -22,9 +22,21 @@ need_root() {
 install_packages() {
   log "Installing nginx, git, curl, docker..."
   apt-get update -qq
-  apt-get install -y -qq nginx git curl ca-certificates docker.io docker-compose-plugin >/dev/null
+  apt-get install -y -qq nginx git curl ca-certificates docker.io docker-compose >/dev/null 2>&1 || \
+    apt-get install -y -qq nginx git curl ca-certificates docker.io >/dev/null
+  if ! command -v docker-compose >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    ln -sf "$(command -v docker)" /usr/local/bin/docker-compose 2>/dev/null || true
+  fi
   systemctl enable docker
   systemctl start docker
+}
+
+compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    echo "docker compose"
+  else
+    echo "docker-compose"
+  fi
 }
 
 clone_or_update() {
@@ -55,10 +67,11 @@ EOF
 deploy_docker() {
   log "Building and starting Docker stack..."
   cd "${INSTALL_DIR}"
-  docker compose build --quiet
-  docker compose up -d
-  sleep 8
-  docker compose exec -T web npx prisma db push 2>/dev/null || true
+  COMPOSE=$(compose_cmd)
+  $COMPOSE build --quiet
+  $COMPOSE up -d
+  sleep 12
+  $COMPOSE exec -T web npx prisma db push 2>/dev/null || true
 }
 
 install_nginx() {
@@ -101,7 +114,7 @@ verify() {
   sleep 3
   if ! curl -fsS -o /dev/null "http://127.0.0.1:${APP_PORT}/"; then
     echo "App not responding on port ${APP_PORT}" >&2
-    docker compose -f "${INSTALL_DIR}/docker-compose.yml" logs --tail=50 web || true
+    $(compose_cmd) -f "${INSTALL_DIR}/docker-compose.yml" logs --tail=50 web || true
     exit 1
   fi
   TITLE=$(curl -fsS "http://127.0.0.1/" | head -c 2000 | grep -oi 'Domain Scanner' | head -1 || true)
