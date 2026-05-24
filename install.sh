@@ -44,6 +44,7 @@ clone_or_update() {
 
 apply_patches() {
   log "Применение патчей фронтенда (export preview/download)..."
+  git -C "${INSTALL_DIR}" checkout HEAD -- site/assets/index-VQj200iM.js
   node "${SITE_DIR}/patch-bundle.mjs"
 }
 
