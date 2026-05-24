@@ -1,33 +1,55 @@
 #!/usr/bin/env bash
-# GeoExport site — one-command install (Ubuntu/Debian VPS)
+# Domain Scanner — one-command VPS install (Docker Compose + nginx)
 set -euo pipefail
 
-REPO_URL="${GEOEXPORT_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
-BRANCH="${GEOEXPORT_BRANCH:-main}"
-INSTALL_DIR="${GEOEXPORT_INSTALL_DIR:-/opt/domain_web}"
-SITE_DIR="${INSTALL_DIR}/site"
-SERVICE_NAME="geoexport-site"
-NGINX_SITE="geoexport-site"
-NODE_PORT="${GEOEXPORT_PORT:-4173}"
+REPO_URL="${DOMAIN_SCANNER_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
+BRANCH="${DOMAIN_SCANNER_BRANCH:-main}"
+INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
+SERVICE_NAME="domain-scanner"
+NGINX_SITE="domain-scanner"
+APP_PORT="${DOMAIN_SCANNER_PORT:-3000}"
+LEGACY_SERVICE="geoexport-site"
+LEGACY_NGINX="geoexport-site"
 
 export DEBIAN_FRONTEND=noninteractive
 
-log() { echo "[geoexport-install] $*"; }
+log() { echo "[domain-scanner-install] $*"; }
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Запустите от root: sudo bash install.sh" >&2
+    echo "Run as root: sudo bash install.sh" >&2
     exit 1
   fi
 }
 
 install_packages() {
-  log "Установка пакетов (nginx, git, curl, nodejs)..."
+  log "Installing system packages..."
   apt-get update -qq
-  apt-get install -y -qq nginx git curl ca-certificates nodejs npm >/dev/null
+  apt-get install -y -qq curl ca-certificates git nginx openssl >/dev/null
+}
+
+install_docker() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    log "Docker already installed"
+    return
+  fi
+  log "Installing Docker..."
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
+}
+
+stop_legacy() {
+  log "Stopping legacy GeoExport mirror (if present)..."
+  systemctl stop "${LEGACY_SERVICE}.service" 2>/dev/null || true
+  systemctl disable "${LEGACY_SERVICE}.service" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${LEGACY_SERVICE}.service"
+  rm -f "/etc/nginx/sites-enabled/${LEGACY_NGINX}"
+  rm -f "/etc/nginx/sites-available/${LEGACY_NGINX}"
+  systemctl daemon-reload 2>/dev/null || true
 }
 
 clone_or_update() {
-  log "Клонирование/обновление репозитория в ${INSTALL_DIR}..."
+  log "Cloning/updating repository at ${INSTALL_DIR}..."
   if [[ -d "${INSTALL_DIR}/.git" ]]; then
     git -C "${INSTALL_DIR}" fetch origin "${BRANCH}"
     git -C "${INSTALL_DIR}" checkout "${BRANCH}"
@@ -36,65 +58,63 @@ clone_or_update() {
     rm -rf "${INSTALL_DIR}"
     git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
   fi
-  if [[ ! -f "${SITE_DIR}/server.mjs" ]]; then
-    echo "Ошибка: не найден ${SITE_DIR}/server.mjs" >&2
-    exit 1
+}
+
+setup_env() {
+  local ip
+  ip="$(hostname -I | awk '{print $1}')"
+  cd "${INSTALL_DIR}"
+  if [[ ! -f .env ]]; then
+    cp .env.example .env
+  fi
+  local secret
+  secret="$(openssl rand -base64 32)"
+  sed -i "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${secret}|" .env
+  sed -i "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=http://${ip}|" .env
+  sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://${ip}|" .env
+  export PORT="${APP_PORT}"
+}
+
+deploy_compose() {
+  log "Building and starting Docker stack..."
+  cd "${INSTALL_DIR}"
+  export PORT="${APP_PORT}"
+  if docker compose version >/dev/null 2>&1; then
+    docker compose build --pull
+    docker compose up -d
+    docker compose exec -T web npx prisma db push
+  else
+    docker-compose build --pull
+    docker-compose up -d
+    docker-compose exec -T web npx prisma db push
   fi
 }
 
-apply_patches() {
-  log "Применение патчей фронтенда (export preview/download)..."
-  git -C "${INSTALL_DIR}" checkout HEAD -- site/assets/index-VQj200iM.js
-  node "${SITE_DIR}/patch-bundle.mjs"
-}
-
-install_systemd() {
-  log "Настройка systemd (${SERVICE_NAME})..."
-  cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
-[Unit]
-Description=GeoExport static mirror (Node)
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=${SITE_DIR}
-Environment=PORT=${NODE_PORT}
-ExecStart=/usr/bin/node ${SITE_DIR}/server.mjs
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable "${SERVICE_NAME}.service"
-  systemctl restart "${SERVICE_NAME}.service"
-}
-
 install_nginx() {
-  log "Настройка nginx (${NGINX_SITE})..."
+  log "Configuring nginx reverse proxy..."
   cat >"/etc/nginx/sites-available/${NGINX_SITE}" <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
 
-    client_max_body_size 64m;
+    client_max_body_size 32m;
 
     location / {
-        proxy_pass http://127.0.0.1:${NODE_PORT};
+        proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_read_timeout 300s;
         proxy_connect_timeout 60s;
+        proxy_buffering off;
     }
 }
 EOF
-  rm -f /etc/nginx/sites-enabled/domain-scanner 2>/dev/null || true
-  rm -f /etc/nginx/sites-available/domain-scanner 2>/dev/null || true
   rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
   ln -sf "/etc/nginx/sites-available/${NGINX_SITE}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
   nginx -t
@@ -103,27 +123,35 @@ EOF
 }
 
 verify() {
-  log "Проверка..."
-  sleep 2
-  if ! systemctl is-active --quiet "${SERVICE_NAME}.service"; then
-    systemctl status "${SERVICE_NAME}.service" --no-pager || true
+  log "Verifying deployment..."
+  sleep 5
+  if ! curl -fsS -o /dev/null "http://127.0.0.1:${APP_PORT}/api/health"; then
+    echo "App health check failed on port ${APP_PORT}" >&2
+    cd "${INSTALL_DIR}" && docker compose logs --tail=40 web 2>/dev/null || true
     exit 1
   fi
-  if ! curl -fsS -o /dev/null "http://127.0.0.1:${NODE_PORT}/"; then
-    echo "Node-сервер не отвечает на порту ${NODE_PORT}" >&2
+  local title
+  title="$(curl -fsS "http://127.0.0.1/" | grep -o '<title>[^<]*</title>' | head -1 || true)"
+  if echo "${title}" | grep -qi geoexport; then
+    echo "ERROR: GeoExport mirror still served — aborting" >&2
     exit 1
   fi
   if ! curl -fsS -o /dev/null "http://127.0.0.1/"; then
-    echo "nginx не отдаёт сайт на :80" >&2
+    echo "nginx not serving on :80" >&2
     exit 1
   fi
-  log "Готово. Сайт доступен по http://$(hostname -I | awk '{print $1}')/"
+  local ip
+  ip="$(hostname -I | awk '{print $1}')"
+  log "Done. Domain Scanner: http://${ip}/"
+  log "Title check: ${title:-ok}"
 }
 
 need_root
 install_packages
+install_docker
+stop_legacy
 clone_or_update
-apply_patches
-install_systemd
+setup_env
+deploy_compose
 install_nginx
 verify

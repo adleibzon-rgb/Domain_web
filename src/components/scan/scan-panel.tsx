@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, Skeleton } from "@/components/ui/badge";
 import type { ScanResult } from "@/lib/types";
 import Link from "next/link";
+import { NetworkExport } from "@/components/scan/network-export";
 
 export function ScanPanel() {
   const searchParams = useSearchParams();
@@ -269,6 +270,10 @@ function ScanResults({ result, scanId }: { result: ScanResult; scanId: string | 
             </div>
           </CardContent>
         </Card>
+
+        <div className="lg:col-span-2">
+          <NetworkExport result={result} />
+        </div>
       </div>
     </motion.div>
   );
