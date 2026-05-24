@@ -4,7 +4,7 @@ set -euo pipefail
 
 REPO_URL="${DOMAIN_SCANNER_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
 BRANCH="${DOMAIN_SCANNER_BRANCH:-main}"
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
+INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain_web}"
 SERVICE_NAME="domain-scanner"
 NGINX_SITE="domain-scanner"
 APP_PORT="${DOMAIN_SCANNER_PORT:-3000}"
@@ -34,8 +34,9 @@ install_docker() {
   fi
   log "Installing Docker..."
   curl -fsSL https://get.docker.com | sh
-  systemctl enable docker
-  systemctl start docker
+  systemctl enable docker.socket docker.service
+  systemctl start docker.socket
+  systemctl start docker.service
 }
 
 stop_legacy() {
@@ -76,15 +77,28 @@ setup_env() {
 }
 
 deploy_compose() {
-  log "Building and starting Docker stack..."
   cd "${INSTALL_DIR}"
   export PORT="${APP_PORT}"
+  AVAIL_KB=$(df -k "${INSTALL_DIR}" | awk 'NR==2 {print $4}')
+  if [[ "${AVAIL_KB:-0}" -lt 2500000 ]]; then
+    log "Low disk — Node-native deploy..."
+    bash "${INSTALL_DIR}/scripts/install-node.sh"
+    return
+  fi
+  log "Building Docker stack..."
   if docker compose version >/dev/null 2>&1; then
-    docker compose build --pull
+    if ! docker compose build 2>&1; then
+      log "Docker build failed — Node-native deploy..."
+      bash "${INSTALL_DIR}/scripts/install-node.sh"
+      return
+    fi
     docker compose up -d
     docker compose exec -T web npx prisma db push
   else
-    docker-compose build --pull
+    if ! docker-compose build 2>&1; then
+      bash "${INSTALL_DIR}/scripts/install-node.sh"
+      return
+    fi
     docker-compose up -d
     docker-compose exec -T web npx prisma db push
   fi
