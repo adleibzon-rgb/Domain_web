@@ -2,7 +2,7 @@
 # Domain Scanner — one-command uninstall
 set -euo pipefail
 
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
+INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain_web}"
 SERVICE_NAME="domain-scanner"
 NGINX_SITE="domain-scanner"
 LEGACY_SERVICE="geoexport-site"

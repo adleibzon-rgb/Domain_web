@@ -32,17 +32,17 @@ setup_compose_db() {
 
 setup_env() {
   if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
+    cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
     SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
-    cat >"${INSTALL_DIR}/.env" <<EOF
-DATABASE_URL=postgresql://scanner:scanner@127.0.0.1:5432/domain_scanner?schema=public
-REDIS_URL=redis://127.0.0.1:6379
-NEXTAUTH_SECRET=${SECRET}
-NEXTAUTH_URL=http://$(hostname -I | awk '{print $1}')
-NEXT_PUBLIC_APP_URL=http://$(hostname -I | awk '{print $1}')
-PORT=${NODE_PORT}
+    cat >>"${INSTALL_DIR}/.env" <<EOF
 EOF
+    sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://scanner:scanner@127.0.0.1:5432/domain_scanner?schema=public|" "${INSTALL_DIR}/.env"
+    sed -i "s|^REDIS_URL=.*|REDIS_URL=redis://127.0.0.1:6379|" "${INSTALL_DIR}/.env"
+    sed -i "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${SECRET}|" "${INSTALL_DIR}/.env"
+    sed -i "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=http://$(hostname -I | awk '{print $1}')|" "${INSTALL_DIR}/.env"
+    sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://$(hostname -I | awk '{print $1}')|" "${INSTALL_DIR}/.env"
   fi
-  set -a && source "${INSTALL_DIR}/.env" && set +a
+  export PORT="${NODE_PORT}"
 }
 
 build_app() {
