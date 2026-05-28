@@ -1,66 +1,31 @@
 #!/usr/bin/env bash
-# Domain Scanner — one-command uninstall
+# Remove Domain Web nginx site (does not remove Amnezia/Docker)
 set -euo pipefail
 
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
-SERVICE_NAME="domain-scanner"
-NGINX_SITE="domain-scanner"
-LEGACY_SERVICE="geoexport-site"
-LEGACY_NGINX="geoexport-site"
+WEB_ROOT="${DOMAIN_WEB_ROOT:-/var/www/domain-web}"
+INSTALL_SRC="${DOMAIN_WEB_INSTALL_SRC:-/opt/domain-web-src}"
+NGINX_SITE="domain-web"
 
-log() { echo "[domain-scanner-uninstall] $*"; }
-need_root() {
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Run as root: sudo bash uninstall.sh" >&2
-    exit 1
+log() { echo "[domain-web-uninstall] $*"; }
+
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  echo "Run as root: sudo bash uninstall.sh" >&2
+  exit 1
+fi
+
+log "Removing nginx site..."
+rm -f "/etc/nginx/sites-enabled/${NGINX_SITE}"
+rm -f "/etc/nginx/sites-available/${NGINX_SITE}"
+
+if [[ ! -f /etc/nginx/sites-enabled/default ]]; then
+  if [[ -f /etc/nginx/sites-available/default ]]; then
+    ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default 2>/dev/null || true
   fi
-}
+fi
 
-stop_docker() {
-  log "Stopping Docker stack..."
-  if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
-    if docker compose version >/dev/null 2>&1; then
-      docker compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
-    else
-      docker-compose -f "${INSTALL_DIR}/docker-compose.yml" down -v 2>/dev/null || true
-    fi
-  fi
-}
+nginx -t && systemctl reload nginx
 
-stop_app() {
-  systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
-  systemctl disable "${SERVICE_NAME}.service" 2>/dev/null || true
-  rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
-  systemctl daemon-reload
-}
+log "Removing web files (optional paths)..."
+rm -rf "${WEB_ROOT}" "${INSTALL_SRC}"
 
-stop_legacy() {
-  systemctl stop "${LEGACY_SERVICE}.service" 2>/dev/null || true
-  systemctl disable "${LEGACY_SERVICE}.service" 2>/dev/null || true
-  rm -f "/etc/systemd/system/${LEGACY_SERVICE}.service"
-  systemctl daemon-reload
-}
-
-remove_nginx() {
-  log "Removing nginx site..."
-  for site in "${NGINX_SITE}" "${LEGACY_NGINX}"; do
-    rm -f "/etc/nginx/sites-enabled/${site}"
-    rm -f "/etc/nginx/sites-available/${site}"
-  done
-  if command -v nginx >/dev/null 2>&1; then
-    nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
-  fi
-}
-
-remove_files() {
-  log "Removing ${INSTALL_DIR}..."
-  rm -rf "${INSTALL_DIR}"
-}
-
-need_root
-stop_app
-stop_docker
-stop_legacy
-remove_nginx
-remove_files
-log "Domain Scanner removed."
+log "Uninstall complete."

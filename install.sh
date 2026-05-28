@@ -1,269 +1,107 @@
 #!/usr/bin/env bash
-# Domain Scanner — VPS install (Postgres/Redis in Docker, Next.js on host)
-# Full `docker compose up` (web image) needs ~4GB free disk; this script uses the lite path.
+# Domain Web — lightweight static site (nginx :80)
+# curl -fsSL https://raw.githubusercontent.com/andrey271192/Domain_web/main/install.sh | sudo bash
 set -euo pipefail
 
-REPO_URL="${DOMAIN_SCANNER_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
-BRANCH="${DOMAIN_SCANNER_BRANCH:-main}"
-INSTALL_DIR="${DOMAIN_SCANNER_INSTALL_DIR:-/opt/domain-scanner}"
-SERVICE_NAME="domain-scanner"
-NGINX_SITE="domain-scanner"
-APP_PORT="${DOMAIN_SCANNER_PORT:-3000}"
-LEGACY_SERVICE="geoexport-site"
-LEGACY_NGINX="geoexport-site"
+REPO_URL="${DOMAIN_WEB_REPO_URL:-https://github.com/andrey271192/Domain_web.git}"
+BRANCH="${DOMAIN_WEB_BRANCH:-main}"
+INSTALL_SRC="${DOMAIN_WEB_INSTALL_SRC:-/opt/domain-web-src}"
+WEB_ROOT="${DOMAIN_WEB_ROOT:-/var/www/domain-web}"
+NGINX_SITE="domain-web"
+LEGACY_SERVICES=("domain-scanner" "geoexport-site")
 
 export DEBIAN_FRONTEND=noninteractive
 
-log() { echo "[domain-scanner-install] $*"; }
+log() { echo "[domain-web] $*"; }
+
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Run as root: sudo bash install.sh" >&2
+    echo "Run as root: sudo bash" >&2
     exit 1
   fi
 }
 
 install_packages() {
-  log "Installing system packages..."
+  log "Installing nginx, git, curl..."
   apt-get update -qq
-  apt-get install -y -qq curl ca-certificates git nginx openssl >/dev/null
+  apt-get install -y -qq nginx git curl ca-certificates rsync >/dev/null
 }
 
-install_node() {
-  if command -v node >/dev/null 2>&1 && [[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 20 ]]; then
-    log "Node $(node -v) already installed"
-    return
-  fi
-  log "Installing Node.js 22..."
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y -qq nodejs >/dev/null
-}
-
-install_docker() {
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    log "Docker already installed"
-  else
-    log "Installing Docker..."
-    curl -fsSL https://get.docker.com | sh
-  fi
-  systemctl enable docker.socket docker.service 2>/dev/null || true
-  systemctl start docker.socket 2>/dev/null || true
-  systemctl start docker.service 2>/dev/null || true
-}
-
-stop_legacy() {
-  log "Stopping legacy GeoExport mirror (if present)..."
-  systemctl stop "${LEGACY_SERVICE}.service" 2>/dev/null || true
-  systemctl disable "${LEGACY_SERVICE}.service" 2>/dev/null || true
-  rm -f "/etc/systemd/system/${LEGACY_SERVICE}.service"
-  rm -f "/etc/nginx/sites-enabled/${LEGACY_NGINX}"
-  rm -f "/etc/nginx/sites-available/${LEGACY_NGINX}"
-  rm -rf /opt/domain_web 2>/dev/null || true
+stop_legacy_scanner() {
+  log "Disabling legacy Node scanner site (if present)..."
+  for svc in "${LEGACY_SERVICES[@]}"; do
+    systemctl stop "${svc}.service" 2>/dev/null || true
+    systemctl disable "${svc}.service" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${svc}.service"
+  done
+  rm -f /etc/nginx/sites-enabled/domain-scanner 2>/dev/null || true
+  rm -f /etc/nginx/sites-available/domain-scanner 2>/dev/null || true
   systemctl daemon-reload 2>/dev/null || true
 }
 
-clone_or_update() {
-  log "Cloning/updating repository at ${INSTALL_DIR}..."
-  if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    git -C "${INSTALL_DIR}" fetch origin "${BRANCH}"
-    git -C "${INSTALL_DIR}" checkout "${BRANCH}"
-    git -C "${INSTALL_DIR}" reset --hard "origin/${BRANCH}"
+clone_repo() {
+  log "Fetching ${REPO_URL} (${BRANCH})..."
+  if [[ -d "${INSTALL_SRC}/.git" ]]; then
+    git -C "${INSTALL_SRC}" fetch origin "${BRANCH}"
+    git -C "${INSTALL_SRC}" checkout "${BRANCH}"
+    git -C "${INSTALL_SRC}" reset --hard "origin/${BRANCH}"
   else
-    rm -rf "${INSTALL_DIR}"
-    git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_DIR}"
+    rm -rf "${INSTALL_SRC}"
+    git clone --depth 1 --branch "${BRANCH}" "${REPO_URL}" "${INSTALL_SRC}"
   fi
 }
 
-setup_env() {
-  local ip
-  ip="$(hostname -I | awk '{print $1}')"
-  cd "${INSTALL_DIR}"
-  if [[ ! -f .env ]]; then
-    cp .env.example .env
-  fi
-  local secret
-  secret="$(openssl rand -base64 32)"
-  sed -i "s|^NEXTAUTH_SECRET=.*|NEXTAUTH_SECRET=${secret}|" .env
-  sed -i "s|^NEXTAUTH_URL=.*|NEXTAUTH_URL=http://${ip}|" .env
-  sed -i "s|^NEXT_PUBLIC_APP_URL=.*|NEXT_PUBLIC_APP_URL=http://${ip}|" .env
-  sed -i "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://scanner:scanner@127.0.0.1:5432/domain_scanner?schema=public|" .env
-  sed -i "s|^REDIS_URL=.*|REDIS_URL=redis://127.0.0.1:6379|" .env
+deploy_web() {
+  log "Deploying static files to ${WEB_ROOT}..."
+  mkdir -p "${WEB_ROOT}"
+  rsync -a --delete "${INSTALL_SRC}/web/" "${WEB_ROOT}/"
+  chown -R www-data:www-data "${WEB_ROOT}" 2>/dev/null || chown -R nginx:nginx "${WEB_ROOT}" 2>/dev/null || true
 }
 
-deploy_data_services() {
-  log "Starting Postgres and Redis (Docker)..."
-  cd "${INSTALL_DIR}"
-  docker compose up -d postgres redis
-  for i in $(seq 1 30); do
-    if docker compose exec -T postgres pg_isready -U scanner -d domain_scanner >/dev/null 2>&1; then
-      break
+configure_nginx() {
+  log "Configuring nginx (HTTP :80)..."
+  local conf_src="${INSTALL_SRC}/nginx/domain-web.conf"
+  if [[ ! -f "${conf_src}" ]]; then
+    echo "Missing nginx config in repo" >&2
+    exit 1
+  fi
+
+  # Backup existing default if it listens on 80 and is not ours
+  if [[ -f /etc/nginx/sites-enabled/default ]] && ! grep -q "domain-web" /etc/nginx/sites-enabled/default 2>/dev/null; then
+    if grep -q "listen 80" /etc/nginx/sites-enabled/default 2>/dev/null; then
+      mv /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/default.bak.$(date +%s) 2>/dev/null || true
     fi
-    sleep 2
-  done
-}
-
-build_app() {
-  log "Building Next.js app on host..."
-  cd "${INSTALL_DIR}"
-  export NODE_ENV=production
-  npm ci
-  npx prisma generate
-  npx prisma db push
-  npm run build
-  bash scripts/sync-standalone-assets.sh "${INSTALL_DIR}"
-  # Keep production deps at repo root; `next start` is more reliable than
-  # standalone on small VPS (avoids incomplete traced node_modules).
-  npm ci --omit=dev
-  npx prisma generate
-  journalctl --vacuum-size=80M 2>/dev/null || true
-  apt-get clean 2>/dev/null || true
-}
-
-install_monitor_worker() {
-  log "Installing monitor worker (${SERVICE_NAME}-worker)..."
-  cat >"/etc/systemd/system/${SERVICE_NAME}-worker.service" <<EOF
-[Unit]
-Description=Domain Scanner monitor worker
-After=network.target docker.service ${SERVICE_NAME}.service
-Wants=docker.service
-
-[Service]
-Type=simple
-WorkingDirectory=${INSTALL_DIR}
-EnvironmentFile=${INSTALL_DIR}/.env
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run worker:monitors --silent
-Restart=on-failure
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable "${SERVICE_NAME}-worker.service"
-  systemctl restart "${SERVICE_NAME}-worker.service"
-}
-
-seed_admin_user() {
-  if [[ -n "${SEED_ADMIN_EMAIL:-}" && -n "${SEED_ADMIN_PASSWORD:-}" ]]; then
-    log "Seeding admin user..."
-    cd "${INSTALL_DIR}"
-    SEED_ADMIN_EMAIL="${SEED_ADMIN_EMAIL}" SEED_ADMIN_PASSWORD="${SEED_ADMIN_PASSWORD}" npm run seed:admin --silent
   fi
-}
 
-install_systemd() {
-  log "Installing systemd unit (${SERVICE_NAME})..."
-  cat >"/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
-[Unit]
-Description=Domain Scanner (Next.js)
-After=network.target docker.service
-Wants=docker.service
-
-[Service]
-Type=simple
-WorkingDirectory=${INSTALL_DIR}
-EnvironmentFile=${INSTALL_DIR}/.env
-Environment=HOSTNAME=0.0.0.0
-Environment=PORT=${APP_PORT}
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run start --silent
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable "${SERVICE_NAME}.service"
-  systemctl restart "${SERVICE_NAME}.service"
-  install_monitor_worker
-  seed_admin_user
-}
-
-install_nginx() {
-  log "Configuring nginx reverse proxy..."
-  cat >"/etc/nginx/sites-available/${NGINX_SITE}" <<EOF
-server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
-
-    client_max_body_size 32m;
-
-    location /_next/static/ {
-        alias ${INSTALL_DIR}/.next/static/;
-        expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        access_log off;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:${APP_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 60s;
-        proxy_buffering off;
-    }
-}
-EOF
-  rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+  sed "s|/var/www/domain-web|${WEB_ROOT}|g" "${conf_src}" > "/etc/nginx/sites-available/${NGINX_SITE}"
   ln -sf "/etc/nginx/sites-available/${NGINX_SITE}" "/etc/nginx/sites-enabled/${NGINX_SITE}"
+
   nginx -t
   systemctl enable nginx
-  systemctl restart nginx
+  systemctl reload nginx
 }
 
-verify() {
-  log "Verifying deployment..."
-  sleep 4
-  if ! systemctl is-active --quiet "${SERVICE_NAME}.service"; then
-    systemctl status "${SERVICE_NAME}.service" --no-pager || true
-    journalctl -u "${SERVICE_NAME}.service" -n 30 --no-pager || true
-    exit 1
-  fi
-  if ! curl -fsS -o /dev/null "http://127.0.0.1:${APP_PORT}/api/health"; then
-    echo "Health check failed on port ${APP_PORT}" >&2
-    exit 1
-  fi
-  local css
-  css="$(find "${INSTALL_DIR}/.next/static/css" -name '*.css' -type f 2>/dev/null | head -1 || true)"
-  if [[ -z "${css}" ]]; then
-    echo "ERROR: no CSS build output in .next/static/css" >&2
-    exit 1
-  fi
-  local css_url="/_next/static/css/$(basename "${css}")"
-  if ! curl -fsSI "http://127.0.0.1${css_url}" | grep -qi 'content-type:.*css'; then
-    echo "ERROR: CSS not served (${css_url})" >&2
-    exit 1
-  fi
-  log "CSS OK: ${css_url}"
-  local title
-  title="$(curl -fsS "http://127.0.0.1/" | grep -o '<title>[^<]*</title>' | head -1 || true)"
-  if echo "${title}" | grep -qi geoexport; then
-    echo "ERROR: GeoExport mirror still served — aborting" >&2
-    exit 1
-  fi
+print_done() {
   local ip
-  ip="$(hostname -I | awk '{print $1}')"
-  log "Done. Domain Scanner: http://${ip}/"
-  log "Title: ${title:-Domain Scanner}"
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'SERVER_IP')"
+  log "Done."
+  echo ""
+  echo "  Site root:  ${WEB_ROOT}"
+  echo "  URL:        http://${ip}/"
+  echo "  Pages:      /connect.html  /domains.html"
+  echo ""
+  echo "  Amnezia (443) and Docker containers were not stopped."
+  echo ""
 }
 
-need_root
-install_packages
-install_node
-install_docker
-stop_legacy
-clone_or_update
-setup_env
-deploy_data_services
-build_app
-install_systemd
-install_nginx
-verify
+main() {
+  need_root
+  install_packages
+  stop_legacy_scanner
+  clone_repo
+  deploy_web
+  configure_nginx
+  print_done
+}
+
+main "$@"

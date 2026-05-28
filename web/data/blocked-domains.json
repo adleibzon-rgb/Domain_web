@@ -1,0 +1,130 @@
+{
+  "updated": "2026-05-28",
+  "groups": [
+    {
+      "id": "media",
+      "title": "Медиа",
+      "icon": "🎬",
+      "description": "Стриминг, видео и музыкальные сервисы",
+      "domains": [
+        "netflix.com",
+        "youtube.com",
+        "youtu.be",
+        "googlevideo.com",
+        "ytimg.com",
+        "twitch.tv",
+        "spotify.com",
+        "hulu.com",
+        "disneyplus.com",
+        "hbomax.com",
+        "soundcloud.com",
+        "vimeo.com"
+      ],
+      "ips": [
+        "23.246.0.0/18",
+        "208.65.153.0/24",
+        "142.250.0.0/15"
+      ],
+      "v2fly_tags": ["geosite:netflix", "geosite:youtube", "geosite:twitch", "geosite:spotify"]
+    },
+    {
+      "id": "social",
+      "title": "Социальные сети",
+      "icon": "🌐",
+      "description": "Соцсети и платформы Meta, X и др.",
+      "domains": [
+        "facebook.com",
+        "instagram.com",
+        "cdninstagram.com",
+        "x.com",
+        "twitter.com",
+        "twimg.com",
+        "linkedin.com",
+        "pinterest.com",
+        "reddit.com",
+        "tumblr.com",
+        "threads.net"
+      ],
+      "ips": [
+        "31.13.64.0/18",
+        "104.244.42.0/24"
+      ],
+      "v2fly_tags": ["geosite:facebook", "geosite:instagram", "geosite:twitter"]
+    },
+    {
+      "id": "ai",
+      "title": "Искусственный интеллект",
+      "icon": "🤖",
+      "description": "Чат-боты, LLM и AI-платформы",
+      "domains": [
+        "openai.com",
+        "chatgpt.com",
+        "chat.openai.com",
+        "anthropic.com",
+        "claude.ai",
+        "gemini.google.com",
+        "bard.google.com",
+        "perplexity.ai",
+        "midjourney.com",
+        "huggingface.co",
+        "copilot.microsoft.com",
+        "poe.com"
+      ],
+      "ips": [
+        "104.18.0.0/16",
+        "185.199.108.0/22"
+      ],
+      "v2fly_tags": ["geosite:openai", "geosite:anthropic", "geosite:google-gemini"]
+    },
+    {
+      "id": "messengers",
+      "title": "Мессенджеры",
+      "icon": "💬",
+      "description": "Мессенджеры и голосовые чаты",
+      "domains": [
+        "telegram.org",
+        "t.me",
+        "telegram.me",
+        "whatsapp.com",
+        "web.whatsapp.com",
+        "signal.org",
+        "discord.com",
+        "discordapp.com",
+        "viber.com",
+        "skype.com",
+        "zoom.us"
+      ],
+      "ips": [
+        "91.108.4.0/22",
+        "149.154.160.0/20"
+      ],
+      "v2fly_tags": ["geosite:telegram", "geosite:whatsapp", "geosite:discord"]
+    },
+    {
+      "id": "other",
+      "title": "Другое / VPN / Dev",
+      "icon": "🛠️",
+      "description": "Игры, разработка, облака и инструменты",
+      "domains": [
+        "github.com",
+        "githubusercontent.com",
+        "gitlab.com",
+        "docker.com",
+        "cloudflare.com",
+        "notion.so",
+        "figma.com",
+        "slack.com",
+        "store.steampowered.com",
+        "steampowered.com",
+        "epicgames.com",
+        "playstation.com",
+        "xbox.com"
+      ],
+      "ips": [
+        "140.82.112.0/20",
+        "104.16.0.0/13"
+      ],
+      "v2fly_tags": ["geosite:github", "geosite:steam", "geosite:cloudflare"]
+    }
+  ]
+}
