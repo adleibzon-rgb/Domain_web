@@ -1,10 +1,10 @@
 // Shared site navigation
 
 const SITE_NAV = [
-  { href: "index.html", label: "Главная", match: (p) => /index\.html$|^\/$/.test(p) },
-  { href: "connect.html", label: "Кабинет студента", match: (p) => /connect\.html$/.test(p) && !/mode=region/.test(location.search) },
-  { href: "connect.html?mode=region", label: "VPN по региону", match: (p) => /connect\.html/.test(p) && /mode=region/.test(location.search) },
-  { href: "domains.html", label: "Группы доменов", match: (p) => /domains\.html$/.test(p) },
+  { href: "index.html", label: "Главная", match: (p) => /index\.html$/.test(p) || p === "/" || /\/$/.test(p) && !/connect|domains/.test(p) },
+  { href: "connect.html", label: "Кабинет студента", match: (p) => /connect\.html/.test(p) && !/mode=region/.test(p) },
+  { href: "connect.html?mode=region", label: "VPN по региону", match: (p) => /connect\.html/.test(p) && /mode=region/.test(p) },
+  { href: "domains.html", label: "Группы доменов", match: (p) => /domains\.html/.test(p) },
 ];
 
 function SiteNav({ brand = "PCA Lab", brandSub = "RESEARCH · EDUCATION" }) {
