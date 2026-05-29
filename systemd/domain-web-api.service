@@ -1,0 +1,21 @@
+[Unit]
+Description=Domain Web Search API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=domainbot
+Group=domainbot
+WorkingDirectory=/opt/domain-web-api
+Environment=PYTHONPATH=/opt/domain-finder-bot
+Environment=DOMAIN_FINDER_BOT_DIR=/opt/domain-finder-bot
+EnvironmentFile=-/opt/domain-finder-bot/.env
+ExecStart=/opt/domain-web-api/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8081 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+{
+  "server_ip": "SERVER_IP",
+  "telegram_proxy": "https://t.me/proxy?server=YOUR_SERVER&port=443&secret=YOUR_SECRET",
+  "telegram_proxy_label": "Прокси Telegram"
+}

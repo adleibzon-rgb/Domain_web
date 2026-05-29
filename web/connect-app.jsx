@@ -27,14 +27,41 @@ function Hero(){
   );
 }
 
+const DEFAULT_SERVER_IP = "SERVER_IP";
+
 // ───────── Server info card ─────────
 function ServerCard(){
   const [copied,setCopied] = useStateC(false);
-  function copy(){
-    navigator.clipboard?.writeText("SERVER_IP");
+  const [copiedProxy,setCopiedProxy] = useStateC(false);
+  const [config,setConfig] = useStateC({
+    server_ip: DEFAULT_SERVER_IP,
+    telegram_proxy: "",
+    telegram_proxy_label: "Прокси Telegram",
+  });
+
+  useEffectC(() => {
+    fetch("/data/site-config.json?t=" + Date.now())
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setConfig(prev => ({ ...prev, ...data })); })
+      .catch(() => {});
+  }, []);
+
+  const serverIp = (config.server_ip || DEFAULT_SERVER_IP).trim();
+  const proxyLabel = config.telegram_proxy_label || "Прокси Telegram";
+  const proxyUrl = (config.telegram_proxy || "").trim();
+
+  function copyIp(){
+    navigator.clipboard?.writeText(serverIp);
     setCopied(true);
     setTimeout(()=>setCopied(false), 1600);
   }
+  function copyProxy(){
+    if (!proxyUrl) return;
+    navigator.clipboard?.writeText(proxyUrl);
+    setCopiedProxy(true);
+    setTimeout(()=>setCopiedProxy(false), 1600);
+  }
+
   return (
     <Card padding={24} style={{maxWidth:880, margin:"0 auto 18px"}}>
       <div style={{fontSize:11, fontWeight:700, letterSpacing:".14em", color:"var(--accent-2)",
@@ -45,11 +72,46 @@ function ServerCard(){
           background:"var(--bg-tint)", border:"1px solid var(--line)", borderRadius:14,
           fontFamily:"var(--mono)", fontSize:18, fontWeight:600,
           letterSpacing:"-0.005em", color:"var(--ink)"}}>
-          SERVER_IP
+          {serverIp}
         </div>
-        <Button variant={copied?"success":"primary"} size="lg" onClick={copy}
+        <Button variant={copied?"success":"primary"} size="lg" onClick={copyIp}
           icon={copied?"check":"clipboard"}>{copied?"Скопировано":"Копировать"}</Button>
       </div>
+
+      <div style={{marginTop:18, paddingTop:18, borderTop:"1px solid var(--line-2)"}}>
+        <div style={{fontSize:13, fontWeight:500, color:"var(--ink-3)"}}>{proxyLabel}</div>
+        {proxyUrl ? (
+          <div style={{marginTop:8, display:"flex", gap:10}}>
+            <div style={{flex:1, minHeight:54, display:"flex", alignItems:"center", padding:"12px 18px",
+              background:"var(--bg-tint)", border:"1px solid var(--line)", borderRadius:14,
+              fontFamily:"var(--mono)", fontSize:14, fontWeight:500,
+              letterSpacing:"-0.005em", color:"var(--ink)", wordBreak:"break-all"}}>
+              <a href={proxyUrl} target="_blank" rel="noreferrer"
+                style={{color:"var(--accent-2)", fontWeight:600, textDecoration:"underline",
+                  textUnderlineOffset:3}}>
+                {proxyUrl}
+              </a>
+            </div>
+            <Button variant={copiedProxy?"success":"primary"} size="lg" onClick={copyProxy}
+              icon={copiedProxy?"check":"clipboard"}>{copiedProxy?"Скопировано":"Копировать"}</Button>
+          </div>
+        ) : (
+          <div style={{marginTop:8, padding:"14px 18px", background:"var(--bg-tint)",
+            border:"1px dashed var(--line)", borderRadius:14}}>
+            <div style={{fontSize:15, fontWeight:600, color:"var(--ink-2)"}}>Не настроено</div>
+            <p style={{margin:"8px 0 0", fontSize:12.5, lineHeight:1.5, color:"var(--ink-3)"}}>
+              Администратор может добавить ссылку в{" "}
+              <code style={{fontSize:12, background:"#fff", padding:"2px 6px", borderRadius:6,
+                border:"1px solid var(--line-2)"}}>/var/www/domain-web/data/site-config.json</code>
+              {" "}→ поле <code style={{fontSize:12, background:"#fff", padding:"2px 6px",
+                borderRadius:6, border:"1px solid var(--line-2)"}}>telegram_proxy</code>.
+              Подробнее — в <code style={{fontSize:12, background:"#fff", padding:"2px 6px",
+                borderRadius:6, border:"1px solid var(--line-2)"}}>data/README.txt</code> на сервере.
+            </p>
+          </div>
+        )}
+      </div>
+
       <div style={{marginTop:18, paddingTop:18, borderTop:"1px solid var(--line-2)",
         display:"flex", alignItems:"center", gap:14, flexWrap:"wrap"}}>
         <span style={{fontSize:13.5, color:"var(--ink-2)", fontWeight:500}}>Сервисы на машине:</span>

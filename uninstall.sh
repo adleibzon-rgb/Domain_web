@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Remove Domain Web nginx site (does not remove Amnezia/Docker)
+# Remove Domain Web site + search API (does not remove Amnezia/Docker/bot)
 set -euo pipefail
 
 WEB_ROOT="${DOMAIN_WEB_ROOT:-/var/www/domain-web}"
 INSTALL_SRC="${DOMAIN_WEB_INSTALL_SRC:-/opt/domain-web-src}"
+API_DIR="${DOMAIN_WEB_API_DIR:-/opt/domain-web-api}"
 NGINX_SITE="domain-web"
+API_SERVICE="domain-web-api"
 
 log() { echo "[domain-web-uninstall] $*"; }
 
@@ -13,9 +15,16 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
   exit 1
 fi
 
+log "Stopping search API..."
+systemctl stop "${API_SERVICE}.service" 2>/dev/null || true
+systemctl disable "${API_SERVICE}.service" 2>/dev/null || true
+rm -f "/etc/systemd/system/${API_SERVICE}.service"
+systemctl daemon-reload 2>/dev/null || true
+
 log "Removing nginx site..."
 rm -f "/etc/nginx/sites-enabled/${NGINX_SITE}"
 rm -f "/etc/nginx/sites-available/${NGINX_SITE}"
+rm -f /etc/nginx/snippets/domain-web-api.conf
 
 if [[ ! -f /etc/nginx/sites-enabled/default ]]; then
   if [[ -f /etc/nginx/sites-available/default ]]; then
@@ -25,7 +34,7 @@ fi
 
 nginx -t && systemctl reload nginx
 
-log "Removing web files (optional paths)..."
-rm -rf "${WEB_ROOT}" "${INSTALL_SRC}"
+log "Removing deployed files..."
+rm -rf "${WEB_ROOT}" "${INSTALL_SRC}" "${API_DIR}"
 
-log "Uninstall complete."
+log "Uninstall complete. domain-finder-bot at /opt/domain-finder-bot was kept."

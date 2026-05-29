@@ -1,7 +1,5 @@
 // Curated blocked domains — static lists (no search)
 
-const { useState, useEffect, useMemo } = React;
-
 function cidrToMask(bits) {
   const n = parseInt(bits || "32", 10);
   if (n === 32) return "255.255.255.255";
@@ -23,6 +21,29 @@ function buildKeeneticBat(group, allGroups) {
   });
   if (lines.length <= 3) {
     lines.push("rem IP-префиксы не заданы — используйте список доменов вручную в VPN");
+  }
+  return lines.join("\r\n") + "\r\n";
+}
+
+function buildBatForSelectedDomains(selectedSet, allGroups) {
+  const selected = [...selectedSet];
+  const lines = ["@echo off", "rem Keenetic — выбранные домены (" + selected.length + ")", ""];
+  const seen = new Set();
+
+  allGroups.forEach((g) => {
+    const picked = g.domains.filter((d) => selectedSet.has(d));
+    if (!picked.length) return;
+    (g.ips || []).forEach((cidr) => {
+      const [ip, bits] = cidr.split("/");
+      if (!ip || seen.has(cidr)) return;
+      seen.add(cidr);
+      lines.push(`route ADD ${ip} MASK ${cidrToMask(bits)} 0.0.0.0 & rem ${g.title}: ${picked.join(", ")}`);
+    });
+  });
+
+  if (lines.length <= 3) {
+    lines.push("rem Нет IP/CIDR для выбранных доменов — настройте VPN вручную");
+    selected.forEach((d) => lines.push(`rem   ${d}`));
   }
   return lines.join("\r\n") + "\r\n";
 }
@@ -52,18 +73,19 @@ async function copyText(text) {
   }
 }
 
-function DomainGroupCard({ group, onCopyDomains, onCopyIps, onDownloadBat }) {
-  const [open, setOpen] = useState(true);
-  const [copied, setCopied] = useState(null);
+function DomainGroupCard({ group, selectedDomains, onToggleDomain, onToggleGroup, onDownloadBat }) {
+  const [open, setOpen] = React.useState(true);
+  const [copied, setCopied] = React.useState(null);
   const domainText = group.domains.join("\n");
   const ipText = (group.ips || []).join("\n");
+  const selectedInGroup = group.domains.filter((d) => selectedDomains.has(d));
+  const allSelected = group.domains.length > 0 && selectedInGroup.length === group.domains.length;
 
   async function handleCopy(kind) {
     const text = kind === "domains" ? domainText : ipText;
     if (!text) return;
     await copyText(text);
     setCopied(kind);
-    onCopyDomains?.(kind);
     setTimeout(() => setCopied(null), 1800);
   }
 
@@ -82,6 +104,9 @@ function DomainGroupCard({ group, onCopyDomains, onCopyIps, onDownloadBat }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {selectedInGroup.length > 0 && (
+            <Badge tone="blue" size="sm">{selectedInGroup.length} выбрано</Badge>
+          )}
           <Badge tone="neutral" size="sm">{group.domains.length} доменов</Badge>
           <Icon name={open ? "chevron-down" : "chevron-right"} size={18} color="var(--ink-3)" />
         </div>
@@ -96,16 +121,28 @@ function DomainGroupCard({ group, onCopyDomains, onCopyIps, onDownloadBat }) {
               ))}
             </div>
           )}
+          <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Button variant="secondary" size="sm" onClick={() => onToggleGroup(group, !allSelected)}>
+              {allSelected ? "Снять выделение группы" : "Выбрать все в группе"}
+            </Button>
+          </div>
           <div style={{
             display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
             gap: 8, marginBottom: 16,
           }}>
-            {group.domains.map((d) => (
-              <div key={d} style={{
-                padding: "10px 12px", borderRadius: 10, background: "var(--bg-tint)",
-                border: "1px solid var(--line-2)", fontFamily: "var(--mono)", fontSize: 12.5,
-              }}>{d}</div>
-            ))}
+            {group.domains.map((d) => {
+              const selected = selectedDomains.has(d);
+              return (
+                <button key={d} type="button" onClick={() => onToggleDomain(d)} style={{
+                  padding: "10px 12px", borderRadius: 10, textAlign: "left", cursor: "pointer",
+                  fontFamily: "var(--mono)", fontSize: 12.5,
+                  background: selected ? "var(--brand-soft)" : "var(--bg-tint)",
+                  border: selected ? "2px solid var(--brand)" : "1px solid var(--line-2)",
+                  color: selected ? "var(--brand)" : "var(--ink)",
+                  fontWeight: selected ? 600 : 400,
+                }}>{d}</button>
+              );
+            })}
           </div>
           {(group.ips || []).length > 0 && (
             <div style={{ marginBottom: 16 }}>
@@ -133,7 +170,7 @@ function DomainGroupCard({ group, onCopyDomains, onCopyIps, onDownloadBat }) {
             )}
             <Button variant="primary" size="sm" icon="download"
               onClick={() => onDownloadBat(group)}>
-              Keenetic .bat
+              Keenetic .bat (вся группа)
             </Button>
           </div>
         </div>
@@ -143,18 +180,20 @@ function DomainGroupCard({ group, onCopyDomains, onCopyIps, onDownloadBat }) {
 }
 
 function DomainsApp() {
-  const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
+  const [groups, setGroups] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter] = React.useState("");
+  const [selectedDomains, setSelectedDomains] = React.useState(new Set());
+  const [copiedSelected, setCopiedSelected] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetch("data/blocked-domains.json")
       .then((r) => r.json())
       .then((data) => { setGroups(data.groups || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
-  const filtered = useMemo(() => {
+  const filtered = React.useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return groups;
     return groups.map((g) => ({
@@ -165,6 +204,34 @@ function DomainsApp() {
 
   const allDomains = groups.flatMap((g) => g.domains).join("\n");
 
+  const toggleDomain = (d) => {
+    setSelectedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d); else next.add(d);
+      return next;
+    });
+  };
+
+  const toggleGroup = (group, select) => {
+    setSelectedDomains((prev) => {
+      const next = new Set(prev);
+      group.domains.forEach((d) => {
+        if (select) next.add(d); else next.delete(d);
+      });
+      return next;
+    });
+  };
+
+  const copySelectedDomains = async () => {
+    await copyText([...selectedDomains].join("\n"));
+    setCopiedSelected(true);
+    setTimeout(() => setCopiedSelected(false), 1800);
+  };
+
+  const downloadSelectedBat = () => {
+    downloadText("keenetic-selected.bat", buildBatForSelectedDomains(selectedDomains, groups));
+  };
+
   return (
     <div>
       <SiteNav brandSub="ЗАБЛОКИРОВАННЫЕ СЕРВИСЫ" />
@@ -174,10 +241,10 @@ function DomainsApp() {
           Популярные заблокированные домены
         </h1>
         <p style={{ margin: "0 0 24px", fontSize: 16, lineHeight: 1.55, color: "var(--ink-2)", maxWidth: 640 }}>
+          Кликните по доменам для выбора, затем скачайте .bat только для выбранных.
           Кураторские списки для настройки VPN и маршрутизации на роутере Keenetic.
-          Поиск по crt.sh на сайте отключён — только готовые пресеты по категориям.
         </p>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 28 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Фильтр по домену…"
             style={{
               flex: "1 1 220px", height: 42, padding: "0 16px", borderRadius: 12,
@@ -191,6 +258,25 @@ function DomainsApp() {
           </Button>
         </div>
 
+        {selectedDomains.size > 0 && (
+          <div style={{
+            display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24, padding: "14px 16px",
+            background: "var(--brand-soft)", borderRadius: 14, border: "1px solid rgba(15,93,255,.15)",
+            alignItems: "center",
+          }}>
+            <span style={{ fontWeight: 600, fontSize: 14 }}>Выбрано: {selectedDomains.size}</span>
+            <Button variant="primary" size="sm" icon="download" onClick={downloadSelectedBat}>
+              Скачать .bat для выбранных
+            </Button>
+            <Button variant="secondary" size="sm" icon="clipboard" onClick={copySelectedDomains}>
+              {copiedSelected ? "Скопировано" : "Копировать выбранные домены"}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setSelectedDomains(new Set())}>
+              Снять выделение
+            </Button>
+          </div>
+        )}
+
         {loading && <p style={{ color: "var(--ink-3)" }}>Загрузка списков…</p>}
         {!loading && filtered.length === 0 && (
           <Card padding={24}><p style={{ margin: 0, color: "var(--ink-3)" }}>Ничего не найдено по фильтру.</p></Card>
@@ -198,12 +284,17 @@ function DomainsApp() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {filtered.map((g) => (
             <DomainGroupCard key={g.id} group={g}
+              selectedDomains={selectedDomains}
+              onToggleDomain={toggleDomain}
+              onToggleGroup={toggleGroup}
               onDownloadBat={(grp) => downloadText(`keenetic-${grp.id}.bat`, buildKeeneticBat(grp, groups))} />
           ))}
         </div>
       </section>
       <footer style={{ maxWidth: 960, margin: "48px auto", padding: "0 24px 40px", textAlign: "center", fontSize: 13, color: "var(--ink-3)" }}>
         <a href="connect.html" style={{ color: "var(--brand)", fontWeight: 600 }}>Кабинет студента</a>
+        {" · "}
+        <a href="/search">Поиск доменов</a>
         {" · "}
         <a href="index.html">На главную</a>
       </footer>
